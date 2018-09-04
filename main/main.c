@@ -4,7 +4,7 @@
 #include "driver/gpio.h"
 
 #define BLINK_GPIO 22
-#define BLINK_DELAY 1000
+#define BLINK_DELAY 100
 
 void blink_task(void) {
 	gpio_pad_select_gpio(BLINK_GPIO);
