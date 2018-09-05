@@ -1,15 +1,18 @@
+//**********************************************************************
+//Includes
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2c.h"
 
+//**********************************************************************
+//Defines
 #define I2C_NUM 			1
 #define I2C_SDA_IO			18
 #define I2C_SCL_IO			19
 #define I2C_FREQ_HZ			100000
 #define I2C_RX_BUF_DISABLE	0
 #define I2C_TX_BUF_DISABLE	0
-
 #define WRITE_BIT  			I2C_MASTER_WRITE
 #define READ_BIT 			I2C_MASTER_READ
 #define ACK_CHECK_EN 		0x1
@@ -17,25 +20,29 @@
 #define ACK_VAL 			0x0
 #define NACK_VAL 			0x1
 
-#define MPU9250_ADDR		0x68
-#define MPU9250_WHO_AM_I	0x75
-#define MPU9250_INT_PIN_CFG 0x37
+#define MPU9250_ADDR			0x68
+#define MPU9250_WHO_AM_I		0x75
+#define MPU9250_INT_PIN_CFG 	0x37
+#define MPU9250_ACCEL_XOUT_H	0x3B
+#define MPU9250_TEMP_OUT_H 		0x41
+#define MPU9250_GYRO_XOUT_H 	0x43
 
 #define AK8963_ADDR			0x0C
 #define AK8963_CNTL 		0x0A
 #define AK8963_ASAX 		0x10
 #define AK8963_WHO_AM_I 	0x00
+#define AK8963_ST1			0x02
+#define AK8963_XOUT_L		0x03
 
-#define    GYRO_FULL_SCALE_250_DPS    0x00
-#define    GYRO_FULL_SCALE_500_DPS    0x08
-#define    GYRO_FULL_SCALE_1000_DPS   0x10
-#define    GYRO_FULL_SCALE_2000_DPS   0x18
+//**********************************************************************
+//Global Variables
+int16_t acceData[3];	//Store the 16-bit signed accelerometer data
+int16_t gyroData[3];	//Store the 16-bit signed gyroscope data
+int16_t magData[3];		//Store the 16-bit signed magnetometer data
+int16_t tempData;		//Store the 16-bit signed temperature data
 
-#define    ACC_FULL_SCALE_2_G        0x00
-#define    ACC_FULL_SCALE_4_G        0x08
-#define    ACC_FULL_SCALE_8_G        0x10
-#define    ACC_FULL_SCALE_16_G       0x18
-
+//**********************************************************************
+//Auxiliary Functions
 esp_err_t I2C_Write_Byte(uint8_t deviceAddr, uint8_t regAddr, uint8_t regData) {
 	int ret;
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -113,37 +120,52 @@ void I2C_Init() {
 	I2C_RX_BUF_DISABLE,
 	I2C_TX_BUF_DISABLE, 0);
 }
+void MPU9250_Read_Acce(int16_t * dest) {
+	uint8_t raw_data[6];
+	I2C_Read_N_Bytes(MPU9250_ADDR, MPU9250_ACCEL_XOUT_H, 6, &raw_data[0]);
+	dest[0] = ((int16_t) raw_data[0] << 8) | raw_data[1];
+	dest[1] = ((int16_t) raw_data[2] << 8) | raw_data[3];
+	dest[2] = ((int16_t) raw_data[4] << 8) | raw_data[5];
+}
 
-void read_MPU9250() {
-	uint8_t data_buffer[14];
-	uint8_t mag_buffer[7];
+void MPU9250_Read_Gyro(int16_t * dest) {
+	uint8_t raw_data[6];
+	I2C_Read_N_Bytes(MPU9250_ADDR, MPU9250_GYRO_XOUT_H, 6, &raw_data[0]);
+	dest[0] = ((int16_t) raw_data[0] << 8) | raw_data[1];
+	dest[1] = ((int16_t) raw_data[2] << 8) | raw_data[3];
+	dest[2] = ((int16_t) raw_data[4] << 8) | raw_data[5];
+}
+
+void MPU9250_Read_Mag(int16_t * dest) {
+	uint8_t raw_data[7];
+	uint8_t ST1;
+	I2C_Read_Byte(AK8963_ADDR, AK8963_ST1, &ST1);
+	//if (ST1 == 0x01) {
+		I2C_Read_N_Bytes(AK8963_ADDR, AK8963_XOUT_L, 7, &raw_data[0]);
+		//if (raw_data[6] != 0x08) {
+			dest[0] = ((int16_t) raw_data[1] << 8) | raw_data[0];
+			dest[1] = ((int16_t) raw_data[3] << 8) | raw_data[2];
+			dest[2] = ((int16_t) raw_data[5] << 8) | raw_data[4];
+		//}
+	//}
+}
+
+void MPU9250_Read_Temp(int16_t * dest) {
+	uint8_t raw_data[2];
+	I2C_Read_N_Bytes(MPU9250_ADDR, MPU9250_TEMP_OUT_H, 2, &raw_data[0]);
+	*dest = ((int16_t) raw_data[0] << 8) | raw_data[1];
+}
+
+void MPU9250_Read_All() {
 	while (1) {
-		I2C_Read_N_Bytes(MPU9250_ADDR, 0x3B, 14, &data_buffer[0]);
-		int16_t xAccel = ((int16_t) data_buffer[0] << 8) | data_buffer[1];
-		int16_t yAccel = data_buffer[2] << 8 | data_buffer[3];
-		int16_t zAccel = data_buffer[4] << 8 | data_buffer[5];
-
-		int16_t xGyro = data_buffer[8] << 8 | data_buffer[9];
-		int16_t yGyro = data_buffer[10] << 8 | data_buffer[11];
-		int16_t zGyro = data_buffer[12] << 8 | data_buffer[13];
-
-		I2C_Read_N_Bytes(AK8963_ADDR, 0x03, 7, &mag_buffer[0]);
-		int16_t xMag = mag_buffer[3] << 8 | mag_buffer[2];
-		int16_t yMag = mag_buffer[1] << 8 | mag_buffer[0];
-		int16_t zMag = mag_buffer[5] << 8 | mag_buffer[4];
-
-		printf("xAccel = %d\n", xAccel);
-		printf("yAccel = %d\n", yAccel);
-		printf("zAccel = %d\n", zAccel);
-
-		printf("xGyro = %d\n", xGyro);
-		printf("yGyro = %d\n", yGyro);
-		printf("zGyro = %d\n", zGyro);
-
-		printf("xMag = %d\n", xMag);
-		printf("yMag = %d\n", yMag);
-		printf("zMag = %d\n\n", zMag);
-
+		MPU9250_Read_Acce(&acceData[0]);
+		MPU9250_Read_Gyro(&gyroData[0]);
+		MPU9250_Read_Mag(&magData[0]);
+		MPU9250_Read_Temp(&tempData);
+		printf("AccelX = %d\nAccelY = %d\nAccelZ = %d\n",acceData[0],acceData[1],acceData[2]);
+		printf("GyroX = %d\nGyroY = %d\nGyroZ = %d\n",gyroData[0],gyroData[1],gyroData[2]);
+		printf("MagX = %d\nMagY = %d\nMagZ = %d\n",magData[0],magData[1],magData[2]);
+		printf("Temp = %d\n\n",tempData);
 		vTaskDelay(50 / portTICK_RATE_MS);
 	}
 }
@@ -164,6 +186,8 @@ void AK8963_Init(float * destination) {
 	vTaskDelay(10 / portTICK_RATE_MS);
 }
 
+//**********************************************************************
+//Main App
 void app_main() {
 	float magData[3];
 	uint8_t whoami;
@@ -184,6 +208,6 @@ void app_main() {
 	printf("magData[1] = %f\n", magData[1]);
 	printf("magData[2] = %f\n", magData[2]);
 
-	xTaskCreate(read_MPU9250, "read_MPU9250", 1024 * 2, NULL, 5, NULL);
+	xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
 
 }

@@ -9,9 +9,12 @@
 
 
 ## Features
-* Read Accelerometer, Gyroscope and Magnetometer from MPU9250 and print via serial terminal
-* Read 14 + 7 sequential bytes from MPU9250
+* Read Accelerometer, Gyroscope, Magnetometer and Temperature from MPU9250 and print via serial terminal
+* Store data in global variables and pass them as pointers to their respective functions
 
 
 ## Status
-**OK**
+**IN PROGRESS**
+
+## TO DO
+* Scale temperature to store it in Celsius
