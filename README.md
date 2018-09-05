@@ -1,22 +1,23 @@
 # ESP32_drone
 
-##Connections
+## Connections
+
 | Led | Pin |
 | --- | --- |
 | Yellow  | 19  |
 | Red  | 23  |
 | Green  | 18  |
 
-##Features
+## Features
 * 3 tasks created with the same function
 * Struct passed as pvParameter
 
-``C
+```C
 struct led {
 	uint8_t pinNumber;
 	uint16_t tickPeriod;
 } led;
-``
+```
 
-##Status
+## Status
 **OK**
