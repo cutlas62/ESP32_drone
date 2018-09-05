@@ -9,8 +9,8 @@
 
 
 ## Features
-* Read Accelerometer and Gyroscope from MPU9250 and print via serial terminal
-* Read 14 sequential bytes from MPU9250
+* Read Accelerometer, Gyroscope and Magnetometer from MPU9250 and print via serial terminal
+* Read 14 + 7 sequential bytes from MPU9250
 
 
 ## Status
