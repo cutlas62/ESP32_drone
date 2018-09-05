@@ -1,8 +1,22 @@
 # ESP32_drone
-Yellow led connected to pin 19.
-Red led connected to pin 23.
-Green led connected to pin 18.
 
-These three leds will toggle sequentially.
+##Connections
+| Led | Pin |
+| --- | --- |
+| Yellow  | 19  |
+| Red  | 23  |
+| Green  | 18  |
 
-Status: OK
+##Features
+* 3 tasks created with the same function
+* Struct passed as pvParameter
+
+``C
+struct led {
+	uint8_t pinNumber;
+	uint16_t tickPeriod;
+} led;
+``
+
+##Status
+**OK**
