@@ -2,22 +2,15 @@
 
 ## Connections
 
-| Led | Pin |
+| MPU9250 | ESP32 |
 | --- | --- |
-| Yellow  | 19  |
-| Red  | 23  |
-| Green  | 18  |
+| SDA  | 18  |
+| SCL  | 19  |
+
 
 ## Features
-* 3 tasks created with the same function
-* Struct passed as pvParameter
+* Read Whoami register from MPU9250 and print via serial terminal
 
-```C
-struct led {
-	uint8_t pinNumber;
-	uint16_t tickPeriod;
-} led;
-```
 
 ## Status
 **OK**
