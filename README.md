@@ -9,7 +9,8 @@
 
 
 ## Features
-* Read Whoami register from MPU9250 and print via serial terminal
+* Read Accelerometer and Gyroscope from MPU9250 and print via serial terminal
+* Read 14 sequential bytes from MPU9250
 
 
 ## Status
