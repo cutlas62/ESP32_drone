@@ -10,6 +10,7 @@
 
 ## Features
 * Read Accelerometer, Gyroscope, Magnetometer and Temperature from MPU9250 and print via serial terminal
+
 | Sensor | ODR | bits |
 | --- | --- | --- |
 | Accelerometer | 1 kHz | 16 |
