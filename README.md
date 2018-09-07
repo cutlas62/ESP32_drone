@@ -10,13 +10,21 @@
 
 ## Features
 * Read Accelerometer, Gyroscope, Magnetometer and Temperature from MPU9250 and print via serial terminal
+| Sensor | ODR | bits |
+| --- | --- | --- |
+| Accelerometer | 1 kHz | 16 |
+| Gyroscope | 1 kHz | 16 |
+| Magnetometer | 100 Hz | 16 (14 LSB)|
+| Temperature | 1 kHz | 16 |
+
 * Store data in global variables and pass them as pointers to their respective functions
 * Calibrate Gyroscope using chip offset registers
 * Calibrate Accelerometer manually subtracting the offset to measurements (chip registers don't seem to work)
 
 
 ## Status
-**IN PROGRESS**
+**OK**
 
 ## TO DO
-* Increase Magnetometer ODR?
+* Calibrate magnetometer
+

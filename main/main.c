@@ -93,7 +93,7 @@ float aRes, gRes, mRes;		//Store the sensors resolution
 uint8_t Gscale = GFS_250DPS;
 uint8_t Ascale = AFS_2G;
 uint8_t Mscale = MFS_16BITS;
-uint8_t Mmode = 0x02;	// 8Hz continuous magnetometer read
+uint8_t Mmode = 0x06;	// 100Hz continuous magnetometer read
 
 float acceBias[3];			//Store the accelerometer bias after initialization
 float gyroBias[3];			//Store the gyroscope bias after initialization
@@ -427,12 +427,21 @@ void MPU9250_Read_All() {
 			gyroRealData[i] = gyroData[i] * gRes;
 			magRealData[i] = magData[i] * magCalibration[i] * mRes;
 		}
+		/*Magnetometer absolute ratings
+		 xMax = 730.02
+		 xmin = -400.62
+		 yMax = 669.48
+		 ymin =-494.99
+		 zMax = 344.94
+		 zmin = -741.36
+		 */
 
 		//printf("%f\t%f\t%f\n", acceRealData[0] - acceBias[0],
 		//		acceRealData[1] - acceBias[1], acceRealData[2] - acceBias[2]);
 		//printf("%f\t%f\t%f\n", gyroRealData[0], gyroRealData[1],
 		//		gyroRealData[2]);
-		printf("%f\t%f\t%f\n", magRealData[0], magRealData[1], magRealData[2]);
+		//printf("%f\t%f\t%f\n", magRealData[0], magRealData[1], magRealData[2]);
+
 
 		/*
 		 printf("AccelX = %d\nAccelY = %d\nAccelZ = %d\n", acceData[0],
@@ -444,7 +453,7 @@ void MPU9250_Read_All() {
 		 printf("Temp = %.2f\n\n", tempData);
 		 */
 
-		vTaskDelay(20 / portTICK_RATE_MS);
+		vTaskDelay(10 / portTICK_RATE_MS);
 	}
 }
 
