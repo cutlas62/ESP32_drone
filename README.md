@@ -1,5 +1,7 @@
 # ESP32_drone
 
+*This Readme file is only for internal tracking. This project is not finished yet*
+
 ## Connections
 
 | MPU9250 | ESP32 |
@@ -19,8 +21,7 @@
 | Temperature | 1 kHz | 16 |
 
 * Store data in global variables and pass them as pointers to their respective functions
-* Calibrate Gyroscope using chip offset registers
-* Calibrate Accelerometer manually subtracting the offset to measurements (chip registers don't seem to work)
+* Calibrate Accelerometer and Gyroscope using chip offset registers
 
 
 ## Status
