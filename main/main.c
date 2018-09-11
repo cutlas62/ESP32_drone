@@ -1,6 +1,7 @@
 //**********************************************************************
 //Includes
 #include <stdio.h>
+#include <sys/time.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2c.h"
@@ -107,6 +108,7 @@ float GyroMeasError = PI * (40.0f / 180.0f);
 //float beta = sqrt(3.0f / 4.0f) * GyroMeasError;
 float deltat = 0.0f;
 
+struct timeval tv;
 //**********************************************************************
 //Auxiliary Functions
 
@@ -334,7 +336,7 @@ void MPU9250_Calibrate(float * dest1, float * dest2) {
 // the accelerometer biases calculated above must be divided by 8.
 
 	int16_t accel_bias_reg[3] = { 0, 0, 0 }; // A place to hold the factory accelerometer trim biases
-	int16_t mask_bit[3] = { 1, 1, 1 };// Define array to hold mask bit for each accelerometer bias axis
+	int16_t mask_bit[3] = { 1, 1, 1 }; // Define array to hold mask bit for each accelerometer bias axis
 
 	I2C_Read_N_Bytes(MPU9250_ADDR, MPU9250_XA_OFFSET_H, 2, &data[0]); // Read factory accelerometer trim values
 	accel_bias_reg[0] = ((int16_t) data[0] << 8) | data[1];
@@ -347,8 +349,12 @@ void MPU9250_Calibrate(float * dest1, float * dest2) {
 		if (accel_bias_reg[i] % 2) {
 			mask_bit[i] = 0;
 		}
-		accel_bias_reg[i] -= accel_bias[i] >> 3;	// Subtract calculated averaged accelerometer bias scaled to 2048 LSB/g
-		accel_bias_reg[i] = accel_bias_reg[i] & ~mask_bit[i];	// Preserve temperature compensation bit
+		accel_bias_reg[i] -= accel_bias[i] >> 3; // Subtract calculated averaged accelerometer bias scaled to 2048 LSB/g
+		if (mask_bit[i]) {
+			accel_bias_reg[i] = accel_bias_reg[i] & ~mask_bit[i]; // Preserve temperature compensation bit
+		} else {
+			accel_bias_reg[i] = accel_bias_reg[i] | mask_bit[i]; // Preserve temperature compensation bit
+		}
 	}
 
 	data[0] = (accel_bias_reg[0] >> 8) & 0xFF;
@@ -532,26 +538,29 @@ void MPU9250_GetAres() {
 	}
 }
 
+void printMicros() {
+	gettimeofday(&tv, NULL);
+	printf("Micros = %lu\n", 1000000 * tv.tv_sec + tv.tv_usec);
+	vTaskDelay(1000 / portTICK_RATE_MS);
+}
+
 //**********************************************************************
 //Main App
 void app_main() {
 
 	I2C_Init();
 	vTaskDelay(1000 / portTICK_RATE_MS);
+
 	MPU9250_GetAres();
 	MPU9250_GetGres();
 	MPU9250_GetMres();
-
 	MPU9250_Calibrate(&gyroBias[0], &acceBias[0]);
-
-	printf(
-			"XgyroBias = %f\nYgyroBias = %f\nZgyroBias = %f\nXacceBias = %f\nYacceBias = %f\nZacceBias = %f\n\n",
-			gyroBias[0], gyroBias[1], gyroBias[2], acceBias[0], acceBias[1],
-			acceBias[2]);
 	MPU9250_Init();
 
 	AK8963_Init(&magCalibration[0]);
 
+
 	xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
+	//xTaskCreate(printMicros, "printMicros", 1024 * 16, NULL, 5, NULL);
 
 }
