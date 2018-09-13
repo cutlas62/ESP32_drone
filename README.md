@@ -17,16 +17,17 @@
 | --- | --- | --- |
 | Accelerometer | 1 kHz | 16 |
 | Gyroscope | 1 kHz | 16 |
-| Magnetometer | 100 Hz | 16 (14 LSB)|
+| Magnetometer | 100 Hz | 16 |
 | Temperature | 1 kHz | 16 |
 
 * Store data in global variables and pass them as pointers to their respective functions
 * Calibrate Accelerometer and Gyroscope using chip offset registers
+* Madgwick Filter, obtain roll, pitch and yaw
 
 
 ## Status
 **OK**
 
 ## TO DO
-* Calibrate magnetometer
+* Generate pwm signals for motors
 

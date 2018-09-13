@@ -2,6 +2,7 @@
 //Includes
 #include <stdio.h>
 #include <sys/time.h>
+#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2c.h"
@@ -64,6 +65,7 @@
 #define AK8963_XOUT_L		0x03
 
 #define PI 3.141592653589793238462643383279502884f
+#define GyroMeasError  PI*(40.0f/180.0f)
 
 //**********************************************************************
 //Enumerations
@@ -104,13 +106,24 @@ float acceBias[3];			//Store the accelerometer bias after initialization
 float gyroBias[3];			//Store the gyroscope bias after initialization
 
 float q[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
-float GyroMeasError = PI * (40.0f / 180.0f);
-//float beta = sqrt(3.0f / 4.0f) * GyroMeasError;
+float beta = sqrt(3.0f / 4.0f) * PI * (40.0f / 180.0f);
 float deltat = 0.0f;
+float yaw;
+float pitch;
+float roll;
 
 struct timeval tv;
+uint32_t Now;
+uint32_t lastTime;
+TickType_t xLastWakeTime;
 //**********************************************************************
 //Auxiliary Functions
+uint32_t getMicros() {
+	uint32_t ret;
+	gettimeofday(&tv, NULL);
+	ret = 1000000 * tv.tv_sec + tv.tv_usec;
+	return ret;
+}
 
 void I2C_Init() {
 	int i2c_master_port = I2C_NUM;
@@ -156,7 +169,7 @@ esp_err_t I2C_Read_Byte(uint8_t deviceAddr, uint8_t regAddr, uint8_t* regData) {
 	if (ret != ESP_OK) {
 		return ret;
 	}
-	vTaskDelay(1 / portTICK_RATE_MS);
+	//vTaskDelay(1 / portTICK_RATE_MS);	// Check if this is really necessary
 	cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
 	i2c_master_write_byte(cmd, deviceAddr << 1 | READ_BIT, ACK_CHECK_EN);
@@ -168,7 +181,7 @@ esp_err_t I2C_Read_Byte(uint8_t deviceAddr, uint8_t regAddr, uint8_t* regData) {
 }
 
 esp_err_t I2C_Read_N_Bytes(uint8_t deviceAddr, uint8_t regAddr, uint8_t nBytes,
-		uint8_t* buffer) {
+		uint8_t* buffer) {	// Comment inside
 	int ret;
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
@@ -180,7 +193,7 @@ esp_err_t I2C_Read_N_Bytes(uint8_t deviceAddr, uint8_t regAddr, uint8_t nBytes,
 	if (ret != ESP_OK) {
 		return ret;
 	}
-	//vTaskDelay(1 / portTICK_RATE_MS);
+	//vTaskDelay(1 / portTICK_RATE_MS);	// Check if this is really necessary
 	cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
 	i2c_master_write_byte(cmd, deviceAddr << 1 | READ_BIT, ACK_CHECK_EN);
@@ -353,7 +366,7 @@ void MPU9250_Calibrate(float * dest1, float * dest2) {
 		if (mask_bit[i]) {
 			accel_bias_reg[i] = accel_bias_reg[i] & ~mask_bit[i]; // Preserve temperature compensation bit
 		} else {
-			accel_bias_reg[i] = accel_bias_reg[i] | mask_bit[i]; // Preserve temperature compensation bit
+			accel_bias_reg[i] = accel_bias_reg[i] | 0x0001; // Preserve temperature compensation bit
 		}
 	}
 
@@ -422,6 +435,7 @@ void MPU9250_Read_Temp(float * dest) {
 }
 
 void MPU9250_Read_All() {
+	xLastWakeTime = xTaskGetTickCount();
 	while (1) {
 		MPU9250_Read_Acce(&acceData[0]);
 		MPU9250_Read_Gyro(&gyroData[0]);
@@ -430,8 +444,8 @@ void MPU9250_Read_All() {
 
 		for (int i = 0; i < 3; i++) {
 			acceRealData[i] = acceData[i] * aRes;
-			//gyroRealData[i] = gyroData[i] * gRes * PI /180.0; 	//Madgwick Filter
-			gyroRealData[i] = gyroData[i] * gRes;				//Mahony Filter
+			gyroRealData[i] = gyroData[i] * gRes * PI / 180.0;
+			//gyroRealData[i] = gyroData[i] * gRes;
 			magRealData[i] = magData[i] * magCalibration[i] * mRes;
 		}
 		/*Magnetometer absolute ratings
@@ -442,25 +456,32 @@ void MPU9250_Read_All() {
 		 zMax = 344.94
 		 zmin = -741.36
 		 */
+		magRealData[0] -= 165;
+		magRealData[1] -= 105;
+		magRealData[2] += 220;
 
-		//Madgwick(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0], &deltat, &beta);
-		printf("%f\t%f\t%f\n", acceRealData[0], acceRealData[1],
-				acceRealData[2]);
-		//printf("%f\t%f\t%f\n", gyroRealData[0], gyroRealData[1],
-		//		gyroRealData[2]);
-		//printf("%f\t%f\t%f\n", magRealData[0], magRealData[1], magRealData[2]);
 
-		/*
-		 printf("AccelX = %d\nAccelY = %d\nAccelZ = %d\n", acceData[0],
-		 acceData[1], acceData[2]);
-		 printf("GyroX = %d\nGyroY = %d\nGyroZ = %d\n", gyroData[0], gyroData[1],
-		 gyroData[2]);
-		 printf("MagX = %d\nMagY = %d\nMagZ = %d\n", magData[0], magData[1],
-		 magData[2]);
-		 printf("Temp = %.2f\n\n", tempData);
-		 */
+		Now = getMicros();
+		deltat = ((Now - lastTime) / 1000000.0f); // set integration time by time elapsed since last filter update
+		lastTime = Now;
+		printf("freq = %4.2f Hz\n", 1 / deltat);
+		Madgwick(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0],
+				&deltat, &beta);
+		//printf("q[0] = %f\nq[1] = %f\nq[2] = %f\nq[3] = %f\n\n", q[0], q[1],q[2], q[3]);
 
-		vTaskDelay(10 / portTICK_RATE_MS);
+		yaw = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]),
+				q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);
+		pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
+		roll = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]),
+				q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
+		pitch *= 180.0f / PI;
+		yaw *= 180.0f / PI;
+		yaw -= 4; // Declination at Chicago
+		roll *= 180.0f / PI;
+
+		printf("yaw = %.2f\npitch = %.2f\nroll = %.2f\n\n", yaw, pitch, roll);
+
+		vTaskDelayUntil( &xLastWakeTime, 1000.0/25.0 ); // 25Hz
 	}
 }
 
@@ -559,8 +580,6 @@ void app_main() {
 
 	AK8963_Init(&magCalibration[0]);
 
-
 	xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
-	//xTaskCreate(printMicros, "printMicros", 1024 * 16, NULL, 5, NULL);
 
 }
