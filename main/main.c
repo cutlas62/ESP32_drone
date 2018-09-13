@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2c.h"
+#include "driver/ledc.h"
 
 #include "MadgwickFilter.h"
 #include "MahonyFilter.h"
@@ -64,6 +65,19 @@
 #define AK8963_ST1			0x02
 #define AK8963_XOUT_L		0x03
 
+#define LEDC_HS_TIMER          	LEDC_TIMER_0
+#define LEDC_HS_MODE           	LEDC_HIGH_SPEED_MODE
+#define LEDC_HS_CH0_GPIO       	16
+#define LEDC_HS_CH0_CHANNEL 	LEDC_CHANNEL_0
+#define LEDC_HS_CH1_GPIO       	23
+#define LEDC_HS_CH1_CHANNEL 	LEDC_CHANNEL_1
+#define LEDC_HS_CH2_GPIO       	26
+#define LEDC_HS_CH2_CHANNEL 	LEDC_CHANNEL_2
+#define LEDC_HS_CH3_GPIO       	32
+#define LEDC_HS_CH3_CHANNEL 	LEDC_CHANNEL_3
+#define LEDC_HS_FREQ			5000
+#define LEDC_HS_MAX_DUTY		8192
+
 #define PI 3.141592653589793238462643383279502884f
 #define GyroMeasError  PI*(40.0f/180.0f)
 
@@ -116,6 +130,9 @@ struct timeval tv;
 uint32_t Now;
 uint32_t lastTime;
 TickType_t xLastWakeTime;
+
+ledc_timer_config_t ledc_timer;
+ledc_channel_config_t ledc_channel[4];
 //**********************************************************************
 //Auxiliary Functions
 uint32_t getMicros() {
@@ -123,6 +140,57 @@ uint32_t getMicros() {
 	gettimeofday(&tv, NULL);
 	ret = 1000000 * tv.tv_sec + tv.tv_usec;
 	return ret;
+}
+
+void PWM_Init() {
+	ledc_timer_config_t ledc_timer = { .duty_resolution = LEDC_TIMER_13_BIT,
+			.freq_hz = LEDC_HS_FREQ, .speed_mode = LEDC_HS_MODE, .timer_num =
+			LEDC_HS_TIMER };
+	ledc_timer_config(&ledc_timer);
+
+	ledc_channel_config_t ledc_channel[4] = { { .channel = LEDC_HS_CH0_CHANNEL,
+			.duty = 0, .gpio_num = LEDC_HS_CH0_GPIO, .speed_mode = LEDC_HS_MODE,
+			.timer_sel = LEDC_HS_TIMER }, { .channel = LEDC_HS_CH1_CHANNEL,
+			.duty = 0, .gpio_num = LEDC_HS_CH1_GPIO, .speed_mode = LEDC_HS_MODE,
+			.timer_sel = LEDC_HS_TIMER }, { .channel = LEDC_HS_CH2_CHANNEL,
+			.duty = 0, .gpio_num = LEDC_HS_CH2_GPIO, .speed_mode = LEDC_HS_MODE,
+			.timer_sel = LEDC_HS_TIMER }, { .channel = LEDC_HS_CH3_CHANNEL,
+			.duty = 0, .gpio_num = LEDC_HS_CH3_GPIO, .speed_mode = LEDC_HS_MODE,
+			.timer_sel = LEDC_HS_TIMER }, };
+
+	for (int ch = 0; ch < 4; ch++) {
+		ledc_channel_config(&ledc_channel[ch]);
+	}
+
+	ledc_fade_func_install(0);
+
+	while (1) {
+
+		for (int i = 0; i < LEDC_HS_MAX_DUTY; i += 5) {
+
+			for (int ii = 0; ii < 4; ii++) {
+				ledc_set_duty(ledc_channel[ii].speed_mode,
+						ledc_channel[ii].channel, i);
+				ledc_update_duty(ledc_channel[ii].speed_mode,
+						ledc_channel[ii].channel);
+			}
+
+			vTaskDelay(1 / portTICK_PERIOD_MS);
+
+		}
+		for (int i = LEDC_HS_MAX_DUTY; i > 0; i -= 5) {
+
+			for (int ii = 0; ii < 4; ii++) {
+
+				ledc_set_duty(ledc_channel[ii].speed_mode,
+						ledc_channel[ii].channel, i);
+				ledc_update_duty(ledc_channel[ii].speed_mode,
+						ledc_channel[ii].channel);
+			}
+
+			vTaskDelay(1 / portTICK_PERIOD_MS);
+		}
+	}
 }
 
 void I2C_Init() {
@@ -460,7 +528,6 @@ void MPU9250_Read_All() {
 		magRealData[1] -= 105;
 		magRealData[2] += 220;
 
-
 		Now = getMicros();
 		deltat = ((Now - lastTime) / 1000000.0f); // set integration time by time elapsed since last filter update
 		lastTime = Now;
@@ -481,7 +548,7 @@ void MPU9250_Read_All() {
 
 		printf("yaw = %.2f\npitch = %.2f\nroll = %.2f\n\n", yaw, pitch, roll);
 
-		vTaskDelayUntil( &xLastWakeTime, 1000.0/25.0 ); // 25Hz
+		vTaskDelayUntil(&xLastWakeTime, 1000.0 / 25.0); // 25Hz
 	}
 }
 
@@ -559,12 +626,6 @@ void MPU9250_GetAres() {
 	}
 }
 
-void printMicros() {
-	gettimeofday(&tv, NULL);
-	printf("Micros = %lu\n", 1000000 * tv.tv_sec + tv.tv_usec);
-	vTaskDelay(1000 / portTICK_RATE_MS);
-}
-
 //**********************************************************************
 //Main App
 void app_main() {
@@ -580,6 +641,8 @@ void app_main() {
 
 	AK8963_Init(&magCalibration[0]);
 
-	xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
+	PWM_Init();
+
+	//xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
 
 }

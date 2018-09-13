@@ -24,10 +24,18 @@
 * Calibrate Accelerometer and Gyroscope using chip offset registers
 * Madgwick Filter, obtain roll, pitch and yaw
 
+* Generate 4 PWM signals connected to the same timer (5kHz, 8192 resolution)
+
+| Led color | ESP32 Pin | Corner |
+| --- | --- | --- |
+| Red | 16 | 0 |
+| Blue | 23 | 1 |
+| Red | 26 | 2 |
+| Blue | 32 | 3 |
 
 ## Status
 **OK**
 
 ## TO DO
-* Generate pwm signals for motors
+* Implement PI/PID controller
 
