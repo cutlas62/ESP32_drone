@@ -67,16 +67,37 @@
 
 #define LEDC_HS_TIMER          	LEDC_TIMER_0
 #define LEDC_HS_MODE           	LEDC_HIGH_SPEED_MODE
-#define LEDC_HS_CH0_GPIO       	16
+#define LEDC_HS_CH0_GPIO       	32
 #define LEDC_HS_CH0_CHANNEL 	LEDC_CHANNEL_0
 #define LEDC_HS_CH1_GPIO       	23
 #define LEDC_HS_CH1_CHANNEL 	LEDC_CHANNEL_1
 #define LEDC_HS_CH2_GPIO       	26
 #define LEDC_HS_CH2_CHANNEL 	LEDC_CHANNEL_2
-#define LEDC_HS_CH3_GPIO       	32
+#define LEDC_HS_CH3_GPIO       	16
 #define LEDC_HS_CH3_CHANNEL 	LEDC_CHANNEL_3
 #define LEDC_HS_FREQ			5000
 #define LEDC_HS_MAX_DUTY		8192
+
+#define PID_K		100
+#define PID_I		0.05
+#define MIN_THROTTLE	100
+#define BASE_THROTTLE	2000
+
+/*
+ * 0-RED[32]     1-BLUE[23]
+ *     x            x
+ *      x    ^     x
+ *       x   |    x
+ *        x     x
+ *         x   x
+ *          x x
+ *         x   x
+ *        x     x
+ *       x       x
+ *      x         x
+ *     x           x
+ * 2-BLUE[26]     3-RED[16]
+ */
 
 #define PI 3.141592653589793238462643383279502884f
 #define GyroMeasError  PI*(40.0f/180.0f)
@@ -120,11 +141,14 @@ float acceBias[3];			//Store the accelerometer bias after initialization
 float gyroBias[3];			//Store the gyroscope bias after initialization
 
 float q[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
-float beta = sqrt(3.0f / 4.0f) * PI * (40.0f / 180.0f);
+float beta = sqrt(3.0f / 4.0f) * GyroMeasError;
 float deltat = 0.0f;
 float yaw;
 float pitch;
 float roll;
+float targetYaw;
+float targetPitch;
+float targetRoll;
 
 struct timeval tv;
 uint32_t Now;
@@ -133,6 +157,8 @@ TickType_t xLastWakeTime;
 
 ledc_timer_config_t ledc_timer;
 ledc_channel_config_t ledc_channel[4];
+int16_t duty[4];
+
 //**********************************************************************
 //Auxiliary Functions
 uint32_t getMicros() {
@@ -149,47 +175,36 @@ void PWM_Init() {
 	ledc_timer_config(&ledc_timer);
 
 	ledc_channel_config_t ledc_channel[4] = { { .channel = LEDC_HS_CH0_CHANNEL,
-			.duty = 0, .gpio_num = LEDC_HS_CH0_GPIO, .speed_mode = LEDC_HS_MODE,
-			.timer_sel = LEDC_HS_TIMER }, { .channel = LEDC_HS_CH1_CHANNEL,
-			.duty = 0, .gpio_num = LEDC_HS_CH1_GPIO, .speed_mode = LEDC_HS_MODE,
-			.timer_sel = LEDC_HS_TIMER }, { .channel = LEDC_HS_CH2_CHANNEL,
-			.duty = 0, .gpio_num = LEDC_HS_CH2_GPIO, .speed_mode = LEDC_HS_MODE,
-			.timer_sel = LEDC_HS_TIMER }, { .channel = LEDC_HS_CH3_CHANNEL,
-			.duty = 0, .gpio_num = LEDC_HS_CH3_GPIO, .speed_mode = LEDC_HS_MODE,
+			.duty = 500, .gpio_num = LEDC_HS_CH0_GPIO, .speed_mode =
+			LEDC_HS_MODE, .timer_sel = LEDC_HS_TIMER }, { .channel =
+	LEDC_HS_CH1_CHANNEL, .duty = 500, .gpio_num = LEDC_HS_CH1_GPIO,
+			.speed_mode = LEDC_HS_MODE, .timer_sel = LEDC_HS_TIMER }, {
+			.channel = LEDC_HS_CH2_CHANNEL, .duty = 500, .gpio_num =
+			LEDC_HS_CH2_GPIO, .speed_mode = LEDC_HS_MODE, .timer_sel =
+			LEDC_HS_TIMER }, { .channel = LEDC_HS_CH3_CHANNEL, .duty = 500,
+			.gpio_num = LEDC_HS_CH3_GPIO, .speed_mode = LEDC_HS_MODE,
 			.timer_sel = LEDC_HS_TIMER }, };
 
 	for (int ch = 0; ch < 4; ch++) {
 		ledc_channel_config(&ledc_channel[ch]);
 	}
+	vTaskDelay(500 / portTICK_RATE_MS);
+}
 
-	ledc_fade_func_install(0);
+void PWM_Set_Duty(int16_t * duty) {
+	ledc_channel_config_t ledc_channel[4] = { { .channel = LEDC_HS_CH0_CHANNEL,
+			.duty = duty[0], .gpio_num = LEDC_HS_CH0_GPIO, .speed_mode =
+			LEDC_HS_MODE, .timer_sel = LEDC_HS_TIMER }, { .channel =
+	LEDC_HS_CH1_CHANNEL, .duty = duty[1], .gpio_num = LEDC_HS_CH1_GPIO,
+			.speed_mode = LEDC_HS_MODE, .timer_sel = LEDC_HS_TIMER }, {
+			.channel = LEDC_HS_CH2_CHANNEL, .duty = duty[2], .gpio_num =
+			LEDC_HS_CH2_GPIO, .speed_mode = LEDC_HS_MODE, .timer_sel =
+			LEDC_HS_TIMER }, { .channel = LEDC_HS_CH3_CHANNEL, .duty = duty[3],
+			.gpio_num = LEDC_HS_CH3_GPIO, .speed_mode = LEDC_HS_MODE,
+			.timer_sel = LEDC_HS_TIMER }, };
 
-	while (1) {
-
-		for (int i = 0; i < LEDC_HS_MAX_DUTY; i += 5) {
-
-			for (int ii = 0; ii < 4; ii++) {
-				ledc_set_duty(ledc_channel[ii].speed_mode,
-						ledc_channel[ii].channel, i);
-				ledc_update_duty(ledc_channel[ii].speed_mode,
-						ledc_channel[ii].channel);
-			}
-
-			vTaskDelay(1 / portTICK_PERIOD_MS);
-
-		}
-		for (int i = LEDC_HS_MAX_DUTY; i > 0; i -= 5) {
-
-			for (int ii = 0; ii < 4; ii++) {
-
-				ledc_set_duty(ledc_channel[ii].speed_mode,
-						ledc_channel[ii].channel, i);
-				ledc_update_duty(ledc_channel[ii].speed_mode,
-						ledc_channel[ii].channel);
-			}
-
-			vTaskDelay(1 / portTICK_PERIOD_MS);
-		}
+	for (int ch = 0; ch < 4; ch++) {
+		ledc_channel_config(&ledc_channel[ch]);
 	}
 }
 
@@ -503,53 +518,53 @@ void MPU9250_Read_Temp(float * dest) {
 }
 
 void MPU9250_Read_All() {
-	xLastWakeTime = xTaskGetTickCount();
-	while (1) {
-		MPU9250_Read_Acce(&acceData[0]);
-		MPU9250_Read_Gyro(&gyroData[0]);
-		MPU9250_Read_Mag(&magData[0]);
-		MPU9250_Read_Temp(&tempRealData);
+	//xLastWakeTime = xTaskGetTickCount();
+	//while (1) {
+	MPU9250_Read_Acce(&acceData[0]);
+	MPU9250_Read_Gyro(&gyroData[0]);
+	MPU9250_Read_Mag(&magData[0]);
+	MPU9250_Read_Temp(&tempRealData);
 
-		for (int i = 0; i < 3; i++) {
-			acceRealData[i] = acceData[i] * aRes;
-			gyroRealData[i] = gyroData[i] * gRes * PI / 180.0;
-			//gyroRealData[i] = gyroData[i] * gRes;
-			magRealData[i] = magData[i] * magCalibration[i] * mRes;
-		}
-		/*Magnetometer absolute ratings
-		 xMax = 730.02
-		 xmin = -400.62
-		 yMax = 669.48
-		 ymin =-494.99
-		 zMax = 344.94
-		 zmin = -741.36
-		 */
-		magRealData[0] -= 165;
-		magRealData[1] -= 105;
-		magRealData[2] += 220;
-
-		Now = getMicros();
-		deltat = ((Now - lastTime) / 1000000.0f); // set integration time by time elapsed since last filter update
-		lastTime = Now;
-		printf("freq = %4.2f Hz\n", 1 / deltat);
-		Madgwick(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0],
-				&deltat, &beta);
-		//printf("q[0] = %f\nq[1] = %f\nq[2] = %f\nq[3] = %f\n\n", q[0], q[1],q[2], q[3]);
-
-		yaw = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]),
-				q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);
-		pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
-		roll = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]),
-				q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
-		pitch *= 180.0f / PI;
-		yaw *= 180.0f / PI;
-		yaw -= 4; // Declination at Chicago
-		roll *= 180.0f / PI;
-
-		printf("yaw = %.2f\npitch = %.2f\nroll = %.2f\n\n", yaw, pitch, roll);
-
-		vTaskDelayUntil(&xLastWakeTime, 1000.0 / 25.0); // 25Hz
+	for (int i = 0; i < 3; i++) {
+		acceRealData[i] = acceData[i] * aRes;
+		gyroRealData[i] = gyroData[i] * gRes * PI / 180.0;
+		//gyroRealData[i] = gyroData[i] * gRes;
+		magRealData[i] = magData[i] * magCalibration[i] * mRes;
 	}
+	/*Magnetometer absolute ratings
+	 xMax = 730.02
+	 xmin = -400.62
+	 yMax = 669.48
+	 ymin =-494.99
+	 zMax = 344.94
+	 zmin = -741.36
+	 */
+	magRealData[0] -= 165;
+	magRealData[1] -= 105;
+	magRealData[2] += 220;
+
+	Now = getMicros();
+	deltat = ((Now - lastTime) / 1000000.0f); // set integration time by time elapsed since last filter update
+	lastTime = Now;
+	//printf("freq = %4.2f Hz\n", 1 / deltat);
+	Madgwick(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0],
+			&deltat, &beta);
+	//printf("q[0] = %f\nq[1] = %f\nq[2] = %f\nq[3] = %f\n\n", q[0], q[1],q[2], q[3]);
+
+	yaw = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]),
+			q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);
+	roll = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
+	pitch = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]),
+			q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
+	roll *= 180.0f / PI;
+	yaw *= 180.0f / PI;
+	yaw -= 4; // Declination at Chicago
+	pitch *= 180.0f / PI;
+
+	//printf("yaw = %.2f\npitch = %.2f\nroll = %.2f\n\n", yaw, pitch, roll);
+
+	//vTaskDelayUntil(&xLastWakeTime, 1000.0 / 25.0); // 25Hz
+	//}
 }
 
 void AK8963_Init(float * destination) {
@@ -642,6 +657,43 @@ void app_main() {
 	AK8963_Init(&magCalibration[0]);
 
 	PWM_Init();
+
+	MPU9250_Read_All();
+	targetYaw = yaw;
+	targetPitch = 0;
+	targetRoll = 0;
+
+	while (1) {
+
+		MPU9250_Read_All();
+		float eRoll = targetRoll - roll;
+		float eYaw = targetYaw - yaw;
+		float ePitch = targetPitch - pitch;
+
+		eRoll *= PID_K;
+		eYaw *= PID_K;
+		ePitch *= PID_K;
+
+		//printf("eRoll = %.4f\neYaw = %.4f\nePitch = %.4f\n\n", eRoll, eYaw, ePitch);
+
+		duty[0] = BASE_THROTTLE + eRoll + ePitch;
+		duty[1] = BASE_THROTTLE - eRoll + ePitch;
+		duty[2] = BASE_THROTTLE + eRoll - ePitch;
+		duty[3] = BASE_THROTTLE - eRoll - ePitch;
+
+		for (uint8_t i = 0; i < 4; i++) {
+			if (duty[i] < MIN_THROTTLE) {
+				duty[i] = MIN_THROTTLE;
+			} else if (duty[i] > LEDC_HS_MAX_DUTY) {
+				duty[i] = LEDC_HS_MAX_DUTY;
+			}
+
+			//printf("duty[%d] = %d\n", i, duty[i]);
+		}
+		PWM_Set_Duty(&duty[0]);
+		vTaskDelay(1 / portTICK_RATE_MS);
+
+	}
 
 	//xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
 
