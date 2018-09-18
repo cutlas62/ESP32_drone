@@ -9,7 +9,7 @@
 #include "driver/ledc.h"
 
 #include "MadgwickFilter.h"
-#include "MahonyFilter.h"
+//#include "MahonyFilter.h"
 //**********************************************************************
 //Defines
 //#define DEBUG	//Define for debugging verbose
@@ -78,8 +78,9 @@
 #define LEDC_HS_FREQ			5000
 #define LEDC_HS_MAX_DUTY		8192
 
-#define PID_K		100
+#define PID_P		100
 #define PID_I		0.05
+#define PID_D		50
 #define MIN_THROTTLE	100
 #define BASE_THROTTLE	2000
 
@@ -143,16 +144,17 @@ float gyroBias[3];			//Store the gyroscope bias after initialization
 float q[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
 float beta = sqrt(3.0f / 4.0f) * GyroMeasError;
 float deltat = 0.0f;
-float yaw;
-float pitch;
-float roll;
-float targetYaw;
-float targetPitch;
-float targetRoll;
+float roll, pitch, yaw;
+float iRoll, iPitch, iYaw;
+float last_eRoll, last_ePitch, last_eYaw;
+float targetRoll, targetPitch, targetYaw;
 
 struct timeval tv;
 uint32_t Now;
 uint32_t lastTime;
+uint32_t PID_IterationTime;
+uint32_t PID_Now;
+uint32_t PID_LastTime;
 TickType_t xLastWakeTime;
 
 ledc_timer_config_t ledc_timer;
@@ -664,36 +666,68 @@ void app_main() {
 	targetRoll = 0;
 
 	while (1) {
+			//Read current position
+			MPU9250_Read_All();
 
-		MPU9250_Read_All();
-		float eRoll = targetRoll - roll;
-		float eYaw = targetYaw - yaw;
-		float ePitch = targetPitch - pitch;
+			//Calculate the error
+			float eRoll = targetRoll - roll;
+			float eYaw = targetYaw - yaw;
+			float ePitch = targetPitch - pitch;
 
-		eRoll *= PID_K;
-		eYaw *= PID_K;
-		ePitch *= PID_K;
+			//Calculate proportional component
+			float pRoll = PID_P * eRoll;
+			float pYaw = PID_P * eYaw;
+			float pPitch = PID_P * ePitch;
 
-		//printf("eRoll = %.4f\neYaw = %.4f\nePitch = %.4f\n\n", eRoll, eYaw, ePitch);
+			//Calculate integral component
+			iRoll = iRoll + (PID_I * eRoll);
+			iYaw = iYaw + (PID_I * eYaw);
+			iPitch = iPitch + (PID_I * ePitch);
 
-		duty[0] = BASE_THROTTLE + eRoll + ePitch;
-		duty[1] = BASE_THROTTLE - eRoll + ePitch;
-		duty[2] = BASE_THROTTLE + eRoll - ePitch;
-		duty[3] = BASE_THROTTLE - eRoll - ePitch;
+			//Calculate elapsed time
+			PID_LastTime = PID_Now;
+			PID_Now = getMicros();
+			PID_IterationTime = PID_Now - PID_LastTime;
 
-		for (uint8_t i = 0; i < 4; i++) {
-			if (duty[i] < MIN_THROTTLE) {
-				duty[i] = MIN_THROTTLE;
-			} else if (duty[i] > LEDC_HS_MAX_DUTY) {
-				duty[i] = LEDC_HS_MAX_DUTY;
+			//Calculate derivative component
+			float dRoll = PID_D * ((eRoll - last_eRoll) / PID_IterationTime);
+			float dYaw = PID_D * ((eYaw - last_eYaw) / PID_IterationTime);
+			float dPitch = PID_D * ((ePitch - last_ePitch) / PID_IterationTime);
+
+			//Calculate contributions
+			float cRoll = pRoll + iRoll + dRoll;
+			float cYaw = pYaw + iYaw + dYaw;
+			float cPitch = pPitch + iPitch + dPitch;
+
+			//printf("cRoll = %.4f\ncYaw = %.4f\ncPitch = %.4f\n", cRoll, cYaw,cPitch);
+			//printf("IterationTime = %d\n\n", PID_IterationTime);
+
+			//Calculate the control variable
+			duty[0] = BASE_THROTTLE + cRoll + cPitch;
+			duty[1] = BASE_THROTTLE - cRoll + cPitch;
+			duty[2] = BASE_THROTTLE + cRoll - cPitch;
+			duty[3] = BASE_THROTTLE - cRoll - cPitch;
+
+			//Limit the control variable within MIN_THROTTLE and LEDC_HS_MAX_DUTY
+			for (uint8_t i = 0; i < 4; i++) {
+				if (duty[i] < MIN_THROTTLE) {
+					duty[i] = MIN_THROTTLE;
+				} else if (duty[i] > LEDC_HS_MAX_DUTY) {
+					duty[i] = LEDC_HS_MAX_DUTY;
+				}
+				//printf("duty[%d] = %d\n", i, duty[i]);
 			}
 
-			//printf("duty[%d] = %d\n", i, duty[i]);
-		}
-		PWM_Set_Duty(&duty[0]);
-		vTaskDelay(1 / portTICK_RATE_MS);
+			//Update the PWM duty cycle
+			PWM_Set_Duty(&duty[0]);
 
-	}
+			//Update variables
+			last_eRoll = eRoll;
+			last_eYaw = eYaw;
+			last_ePitch = ePitch;
+
+			vTaskDelayUntil(&xLastWakeTime, 1000 / 1000);	//1kHz
+		}
 
 	//xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
 

@@ -25,7 +25,7 @@
 * Madgwick Filter, obtain roll, pitch and yaw
 
 * Generate 4 PWM signals connected to the same timer (5kHz, 8192 resolution)
-* P controller for Roll and Pitch
+* PID controller for Roll, Pitch and Yaw
 
 | Led color | ESP32 Pin | Corner |
 | --- | --- | --- |
@@ -38,7 +38,5 @@
 **OK**
 
 ## TO DO
-* Implement P controller for Yaw
-* Implement PI controller
-* Implement delayMicros(uint32_t micros)
+* Implement "ReadAll" instead of reading sensors independently
 
