@@ -520,8 +520,6 @@ void MPU9250_Read_Temp(float * dest) {
 }
 
 void MPU9250_Read_All() {
-	//xLastWakeTime = xTaskGetTickCount();
-	//while (1) {
 	MPU9250_Read_Acce(&acceData[0]);
 	MPU9250_Read_Gyro(&gyroData[0]);
 	MPU9250_Read_Mag(&magData[0]);
@@ -565,8 +563,6 @@ void MPU9250_Read_All() {
 
 	//printf("yaw = %.2f\npitch = %.2f\nroll = %.2f\n\n", yaw, pitch, roll);
 
-	//vTaskDelayUntil(&xLastWakeTime, 1000.0 / 25.0); // 25Hz
-	//}
 }
 
 void AK8963_Init(float * destination) {

@@ -39,4 +39,5 @@
 
 ## TO DO
 * Implement "ReadAll" instead of reading sensors independently
+* Increase controller frequency from 500 Hz (current frequency) to 1 kHz
 
