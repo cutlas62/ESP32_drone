@@ -495,8 +495,8 @@ void MPU9250_Read_Gyro(int16_t * dest) {
 
 void MPU9250_Read_Mag(int16_t * dest) {
 	uint8_t raw_data[7];
-	uint8_t ST1;
-	I2C_Read_Byte(AK8963_ADDR, AK8963_ST1, &ST1);
+	//uint8_t ST1;
+	//I2C_Read_Byte(AK8963_ADDR, AK8963_ST1, &ST1);
 	//if (ST1 == 0x01) {
 	I2C_Read_N_Bytes(AK8963_ADDR, AK8963_XOUT_L, 7, &raw_data[0]);
 	if (raw_data[6] == 0x10) { //16 bits without overflow
@@ -519,11 +519,25 @@ void MPU9250_Read_Temp(float * dest) {
 	*dest = ((float) temp) / 333.87 + 21.0;
 }
 
+void MPU9250_Read_ATG() {
+	uint8_t raw_data[14];
+	I2C_Read_N_Bytes(MPU9250_ADDR, MPU9250_ACCEL_XOUT_H, 14, &raw_data[0]);
+	acceData[0] = ((int16_t) raw_data[0] << 8) | raw_data[1];
+	acceData[1] = ((int16_t) raw_data[2] << 8) | raw_data[3];
+	acceData[2] = ((int16_t) raw_data[4] << 8) | raw_data[5];
+
+	uint16_t temp = ((int16_t) raw_data[6] << 8) | raw_data[7];
+	tempRealData = ((float) temp) / 333.87 + 21.0;
+
+	gyroData[0] = ((int16_t) raw_data[8] << 8) | raw_data[9];
+	gyroData[1] = ((int16_t) raw_data[10] << 8) | raw_data[11];
+	gyroData[2] = ((int16_t) raw_data[12] << 8) | raw_data[13];
+}
+
 void MPU9250_Read_All() {
-	MPU9250_Read_Acce(&acceData[0]);
-	MPU9250_Read_Gyro(&gyroData[0]);
+	MPU9250_Read_ATG();
 	MPU9250_Read_Mag(&magData[0]);
-	MPU9250_Read_Temp(&tempRealData);
+
 
 	for (int i = 0; i < 3; i++) {
 		acceRealData[i] = acceData[i] * aRes;
@@ -661,69 +675,72 @@ void app_main() {
 	targetPitch = 0;
 	targetRoll = 0;
 
+
+
+
 	while (1) {
-			//Read current position
-			MPU9250_Read_All();
+		//Read current position
+		MPU9250_Read_All();
 
-			//Calculate the error
-			float eRoll = targetRoll - roll;
-			float eYaw = targetYaw - yaw;
-			float ePitch = targetPitch - pitch;
+		//Calculate the error
+		float eRoll = targetRoll - roll;
+		float eYaw = targetYaw - yaw;
+		float ePitch = targetPitch - pitch;
 
-			//Calculate proportional component
-			float pRoll = PID_P * eRoll;
-			float pYaw = PID_P * eYaw;
-			float pPitch = PID_P * ePitch;
+		//Calculate proportional component
+		float pRoll = PID_P * eRoll;
+		float pYaw = PID_P * eYaw;
+		float pPitch = PID_P * ePitch;
 
-			//Calculate integral component
-			iRoll = iRoll + (PID_I * eRoll);
-			iYaw = iYaw + (PID_I * eYaw);
-			iPitch = iPitch + (PID_I * ePitch);
+		//Calculate integral component
+		iRoll = iRoll + (PID_I * eRoll);
+		iYaw = iYaw + (PID_I * eYaw);
+		iPitch = iPitch + (PID_I * ePitch);
 
-			//Calculate elapsed time
-			PID_LastTime = PID_Now;
-			PID_Now = getMicros();
-			PID_IterationTime = PID_Now - PID_LastTime;
+		//Calculate elapsed time
+		PID_LastTime = PID_Now;
+		PID_Now = getMicros();
+		PID_IterationTime = PID_Now - PID_LastTime;
 
-			//Calculate derivative component
-			float dRoll = PID_D * ((eRoll - last_eRoll) / PID_IterationTime);
-			float dYaw = PID_D * ((eYaw - last_eYaw) / PID_IterationTime);
-			float dPitch = PID_D * ((ePitch - last_ePitch) / PID_IterationTime);
+		//Calculate derivative component
+		float dRoll = PID_D * ((eRoll - last_eRoll) / PID_IterationTime);
+		float dYaw = PID_D * ((eYaw - last_eYaw) / PID_IterationTime);
+		float dPitch = PID_D * ((ePitch - last_ePitch) / PID_IterationTime);
 
-			//Calculate contributions
-			float cRoll = pRoll + iRoll + dRoll;
-			float cYaw = pYaw + iYaw + dYaw;
-			float cPitch = pPitch + iPitch + dPitch;
+		//Calculate contributions
+		float cRoll = pRoll + iRoll + dRoll;
+		float cYaw = pYaw + iYaw + dYaw;
+		float cPitch = pPitch + iPitch + dPitch;
 
-			//printf("cRoll = %.4f\ncYaw = %.4f\ncPitch = %.4f\n", cRoll, cYaw,cPitch);
-			//printf("IterationTime = %d\n\n", PID_IterationTime);
+		//printf("cRoll = %.4f\ncYaw = %.4f\ncPitch = %.4f\n", cRoll, cYaw,cPitch);
+		//printf("IterationTime = %d\n\n", PID_IterationTime);
 
-			//Calculate the control variable
-			duty[0] = BASE_THROTTLE + cRoll + cPitch;
-			duty[1] = BASE_THROTTLE - cRoll + cPitch;
-			duty[2] = BASE_THROTTLE + cRoll - cPitch;
-			duty[3] = BASE_THROTTLE - cRoll - cPitch;
+		//Calculate the control variable
+		duty[0] = BASE_THROTTLE + cRoll + cPitch;
+		duty[1] = BASE_THROTTLE - cRoll + cPitch;
+		duty[2] = BASE_THROTTLE + cRoll - cPitch;
+		duty[3] = BASE_THROTTLE - cRoll - cPitch;
 
-			//Limit the control variable within MIN_THROTTLE and LEDC_HS_MAX_DUTY
-			for (uint8_t i = 0; i < 4; i++) {
-				if (duty[i] < MIN_THROTTLE) {
-					duty[i] = MIN_THROTTLE;
-				} else if (duty[i] > LEDC_HS_MAX_DUTY) {
-					duty[i] = LEDC_HS_MAX_DUTY;
-				}
-				//printf("duty[%d] = %d\n", i, duty[i]);
+		//Limit the control variable within MIN_THROTTLE and LEDC_HS_MAX_DUTY
+		for (uint8_t i = 0; i < 4; i++) {
+			if (duty[i] < MIN_THROTTLE) {
+				duty[i] = MIN_THROTTLE;
+			} else if (duty[i] > LEDC_HS_MAX_DUTY) {
+				duty[i] = LEDC_HS_MAX_DUTY;
 			}
-
-			//Update the PWM duty cycle
-			PWM_Set_Duty(&duty[0]);
-
-			//Update variables
-			last_eRoll = eRoll;
-			last_eYaw = eYaw;
-			last_ePitch = ePitch;
-
-			vTaskDelayUntil(&xLastWakeTime, 1000 / 1000);	//1kHz
+			//printf("duty[%d] = %d\n", i, duty[i]);
 		}
+
+		//Update the PWM duty cycle
+		PWM_Set_Duty(&duty[0]);
+
+		//Update variables
+		last_eRoll = eRoll;
+		last_eYaw = eYaw;
+		last_ePitch = ePitch;
+
+		vTaskDelayUntil(&xLastWakeTime, 1000 / 1000);	//1kHz
+	}
 
 	//xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
 
