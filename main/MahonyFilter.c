@@ -1,5 +1,9 @@
+#define MAHONY_KP 		10.0f
+#define MAHONY_KI 		0.0f
+
 #include <math.h>
-void Mahony(float * acceData, float * gyroData, float * magData, float * q, float * deltat, float * Kp, float * Ki, float * eInt) {
+
+void Mahony(float * acceData, float * gyroData, float * magData, float * q, float * deltat, float * eInt) {
 	float ax = acceData[0];
 	float ay = acceData[1];
 	float az = acceData[2];
@@ -68,7 +72,7 @@ void Mahony(float * acceData, float * gyroData, float * magData, float * q, floa
 	ex = (ay * vz - az * vy) + (my * wz - mz * wy);
 	ey = (az * vx - ax * vz) + (mz * wx - mx * wz);
 	ez = (ax * vy - ay * vx) + (mx * wy - my * wx);
-	if (*Ki > 0.0f) {
+	if (MAHONY_KI > 0.0f) {
 		eInt[0] += ex;      // accumulate integral error
 		eInt[1] += ey;
 		eInt[2] += ez;
@@ -79,9 +83,9 @@ void Mahony(float * acceData, float * gyroData, float * magData, float * q, floa
 	}
 
 	// Apply feedback terms
-	gx = gx + (*Kp) * ex + (*Ki) * eInt[0];
-	gy = gy + (*Kp) * ey + (*Ki) * eInt[1];
-	gz = gz + (*Kp) * ez + (*Ki) * eInt[2];
+	gx = gx + (MAHONY_KP) * ex + (MAHONY_KI) * eInt[0];
+	gy = gy + (MAHONY_KP) * ey + (MAHONY_KI) * eInt[1];
+	gz = gz + (MAHONY_KP) * ez + (MAHONY_KI) * eInt[2];
 
 	// Integrate rate of change of quaternion
 	pa = q2;

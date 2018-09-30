@@ -78,9 +78,9 @@
 #define LEDC_HS_FREQ			5000
 #define LEDC_HS_MAX_DUTY		8192
 
-#define PID_P		100
-#define PID_I		0.05
-#define PID_D		50
+#define PID_P			100
+#define PID_I			0.05
+#define PID_D			50
 #define MIN_THROTTLE	100
 #define BASE_THROTTLE	2000
 
@@ -148,6 +148,7 @@ float roll, pitch, yaw;
 float iRoll, iPitch, iYaw;
 float last_eRoll, last_ePitch, last_eYaw;
 float targetRoll, targetPitch, targetYaw;
+float eInt[3] = { 0.0f, 0.0f, 0.0f };		//Mahony integral error
 
 struct timeval tv;
 uint32_t Now;
@@ -160,6 +161,10 @@ TickType_t xLastWakeTime;
 ledc_timer_config_t ledc_timer;
 ledc_channel_config_t ledc_channel[4];
 int16_t duty[4];
+
+// To remove
+uint32_t filter_time = 0;
+uint32_t sensor_read_time = 0;
 
 //**********************************************************************
 //Auxiliary Functions
@@ -535,9 +540,22 @@ void MPU9250_Read_ATG() {
 }
 
 void MPU9250_Read_All() {
+
+	//++++++++++++++++++++++
+	uint32_t read_all_start;
+	gettimeofday(&tv, NULL);
+	read_all_start = 1000000 * tv.tv_sec + tv.tv_usec;
+	//++++++++++++++++++++++
+
+	/*
+	 MPU9250_Read_Acce(&acceData[0]);
+	 MPU9250_Read_Temp(&tempRealData);
+	 MPU9250_Read_Gyro(&gyroData[0]);
+	 */
 	MPU9250_Read_ATG();
 	MPU9250_Read_Mag(&magData[0]);
-
+	gettimeofday(&tv, NULL);
+	sensor_read_time += (1000000 * tv.tv_sec + tv.tv_usec) - read_all_start;
 
 	for (int i = 0; i < 3; i++) {
 		acceRealData[i] = acceData[i] * aRes;
@@ -560,9 +578,16 @@ void MPU9250_Read_All() {
 	Now = getMicros();
 	deltat = ((Now - lastTime) / 1000000.0f); // set integration time by time elapsed since last filter update
 	lastTime = Now;
-	//printf("freq = %4.2f Hz\n", 1 / deltat);
-	Madgwick(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0],
-			&deltat, &beta);
+
+	gettimeofday(&tv, NULL);
+	read_all_start = 1000000 * tv.tv_sec + tv.tv_usec;
+	//Mahony(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0], &deltat,&eInt[0]);
+
+	Madgwick(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0],&deltat, &beta);
+
+	gettimeofday(&tv, NULL);
+		filter_time += (1000000 * tv.tv_sec + tv.tv_usec) - read_all_start;
+
 	//printf("q[0] = %f\nq[1] = %f\nq[2] = %f\nq[3] = %f\n\n", q[0], q[1],q[2], q[3]);
 
 	yaw = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]),
@@ -675,71 +700,96 @@ void app_main() {
 	targetPitch = 0;
 	targetRoll = 0;
 
-
-
-
 	while (1) {
-		//Read current position
-		MPU9250_Read_All();
 
-		//Calculate the error
-		float eRoll = targetRoll - roll;
-		float eYaw = targetYaw - yaw;
-		float ePitch = targetPitch - pitch;
+		uint32_t bundle_start;
+		gettimeofday(&tv, NULL);
+		bundle_start = 1000000 * tv.tv_sec + tv.tv_usec;
 
-		//Calculate proportional component
-		float pRoll = PID_P * eRoll;
-		float pYaw = PID_P * eYaw;
-		float pPitch = PID_P * ePitch;
+		uint32_t loop_start = 0;
+		uint32_t read_all_time = 0;
+		sensor_read_time = 0;
+		filter_time = 0;
 
-		//Calculate integral component
-		iRoll = iRoll + (PID_I * eRoll);
-		iYaw = iYaw + (PID_I * eYaw);
-		iPitch = iPitch + (PID_I * ePitch);
+		for (int tt = 0; tt < 1000; tt++) {
+			gettimeofday(&tv, NULL);
+			loop_start = 1000000 * tv.tv_sec + tv.tv_usec;
+			//Read current position
+			MPU9250_Read_All();
+			gettimeofday(&tv, NULL);
+			read_all_time += (1000000 * tv.tv_sec + tv.tv_usec) - loop_start;
 
-		//Calculate elapsed time
-		PID_LastTime = PID_Now;
-		PID_Now = getMicros();
-		PID_IterationTime = PID_Now - PID_LastTime;
+			//Calculate the error
+			float eRoll = targetRoll - roll;
+			float eYaw = targetYaw - yaw;
+			float ePitch = targetPitch - pitch;
 
-		//Calculate derivative component
-		float dRoll = PID_D * ((eRoll - last_eRoll) / PID_IterationTime);
-		float dYaw = PID_D * ((eYaw - last_eYaw) / PID_IterationTime);
-		float dPitch = PID_D * ((ePitch - last_ePitch) / PID_IterationTime);
+			//Calculate proportional component
+			float pRoll = PID_P * eRoll;
+			float pYaw = PID_P * eYaw;
+			float pPitch = PID_P * ePitch;
 
-		//Calculate contributions
-		float cRoll = pRoll + iRoll + dRoll;
-		float cYaw = pYaw + iYaw + dYaw;
-		float cPitch = pPitch + iPitch + dPitch;
+			//Calculate integral component
+			iRoll = iRoll + (PID_I * eRoll);
+			iYaw = iYaw + (PID_I * eYaw);
+			iPitch = iPitch + (PID_I * ePitch);
 
-		//printf("cRoll = %.4f\ncYaw = %.4f\ncPitch = %.4f\n", cRoll, cYaw,cPitch);
-		//printf("IterationTime = %d\n\n", PID_IterationTime);
+			//Calculate elapsed time
+			PID_LastTime = PID_Now;
+			PID_Now = getMicros();
+			PID_IterationTime = PID_Now - PID_LastTime;
 
-		//Calculate the control variable
-		duty[0] = BASE_THROTTLE + cRoll + cPitch;
-		duty[1] = BASE_THROTTLE - cRoll + cPitch;
-		duty[2] = BASE_THROTTLE + cRoll - cPitch;
-		duty[3] = BASE_THROTTLE - cRoll - cPitch;
+			//Calculate derivative component
+			float dRoll = PID_D * ((eRoll - last_eRoll) / PID_IterationTime);
+			float dYaw = PID_D * ((eYaw - last_eYaw) / PID_IterationTime);
+			float dPitch = PID_D * ((ePitch - last_ePitch) / PID_IterationTime);
 
-		//Limit the control variable within MIN_THROTTLE and LEDC_HS_MAX_DUTY
-		for (uint8_t i = 0; i < 4; i++) {
-			if (duty[i] < MIN_THROTTLE) {
-				duty[i] = MIN_THROTTLE;
-			} else if (duty[i] > LEDC_HS_MAX_DUTY) {
-				duty[i] = LEDC_HS_MAX_DUTY;
+			//Calculate contributions
+			float cRoll = pRoll + iRoll + dRoll;
+			float cYaw = pYaw + iYaw + dYaw;
+			float cPitch = pPitch + iPitch + dPitch;
+
+			//printf("cRoll = %.4f\ncYaw = %.4f\ncPitch = %.4f\n", cRoll, cYaw,cPitch);
+			//printf("IterationTime = %d\n\n", PID_IterationTime);
+
+			//Calculate the control variable
+			duty[0] = BASE_THROTTLE + cRoll + cPitch;
+			duty[1] = BASE_THROTTLE - cRoll + cPitch;
+			duty[2] = BASE_THROTTLE + cRoll - cPitch;
+			duty[3] = BASE_THROTTLE - cRoll - cPitch;
+
+			//Limit the control variable within MIN_THROTTLE and LEDC_HS_MAX_DUTY
+			for (uint8_t i = 0; i < 4; i++) {
+				if (duty[i] < MIN_THROTTLE) {
+					duty[i] = MIN_THROTTLE;
+				} else if (duty[i] > LEDC_HS_MAX_DUTY) {
+					duty[i] = LEDC_HS_MAX_DUTY;
+				}
+				//printf("duty[%d] = %d\n", i, duty[i]);
 			}
-			//printf("duty[%d] = %d\n", i, duty[i]);
+
+			//Update the PWM duty cycle
+			PWM_Set_Duty(&duty[0]);
+			//printf("%d\t%d\t%d\t%d\n",duty[0],duty[1],duty[2],duty[3]);
+
+			//Update variables
+			last_eRoll = eRoll;
+			last_eYaw = eYaw;
+			last_ePitch = ePitch;
+
+			//vTaskDelayUntil(&xLastWakeTime, 1);	//1ms -> 1000/1 = 1000Hz
 		}
 
-		//Update the PWM duty cycle
-		PWM_Set_Duty(&duty[0]);
+		uint32_t bundle_end;
+		gettimeofday(&tv, NULL);
+		bundle_end = 1000000 * tv.tv_sec + tv.tv_usec;
 
-		//Update variables
-		last_eRoll = eRoll;
-		last_eYaw = eYaw;
-		last_ePitch = ePitch;
-
-		vTaskDelayUntil(&xLastWakeTime, 1000 / 1000);	//1kHz
+		printf("Read_All time = %.2f ms\n", read_all_time / 1000.0);
+		printf("Read sensor time = %.2f ms\n", sensor_read_time / 1000.0);
+		printf("Filter time = %.2f ms\n", filter_time / 1000.0);
+		printf("Total time = %.2f ms\n", (bundle_end - bundle_start) / 1000.0);
+		printf("Loop frequency = %.2f Hz\n\n",
+				1000.0 / ((bundle_end - bundle_start) / 1000000.0));
 	}
 
 	//xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
