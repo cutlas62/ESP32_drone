@@ -4,6 +4,7 @@
 
 ## Status
 **TIME MEASURE ACTIVATED**
+**SOMETIMES IT DOESN'T WORK**
 
 ## Connections
 
@@ -41,19 +42,20 @@
 
 | Component | Total time for 1000 iterations| % |
 | --- | --- | --- |
-| Whole loop | 1438 ms | 100% |
-| Read_All function | 1364 ms | 94.85% |
-| Read sensors | 1232 ms | 85.67% |
-| Filter execution | 29 ms | 2.71% |
-| Others | 45 ms | 3.13% |
+| Whole loop | 425.2 ms | 100% |
+| Read_All function | 354.4 ms | 83.35% |
+| Read sensors | 220.8 ms | 51.93% |
+| Filter execution | 27 ms | 6.35% |
+| Others | 43.8 ms | 10.3% |
 
 | Component | Total time for 1000 iterations| % |
 | --- | --- | --- |
-| Read_All function | 1364 ms | 100% |
-| Read sensors | 1232 ms | 90.32% |
-| Others | 132 ms | 9.68% |
+| Read_All function | 354.4 ms | 100% |
+| Read sensors | 220.8 ms | 62.3% |
+| Others | 133.6 ms | 37.7% |
+
+Maximum controller frequency = 2820 Hz
 
 ## TO DO
 * Average target roll and pitch instead of one sample
-* Increase controller frequency from 730 Hz (current frequency) to 1 kHz
 

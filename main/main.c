@@ -12,7 +12,8 @@
 //#include "MahonyFilter.h"
 //**********************************************************************
 //Defines
-//#define DEBUG	//Define for debugging verbose
+//#define DEBUG				//Define for debugging verbose
+//#define TIME_MEASURE		//Define for time measurements
 #define I2C_NUM 			1
 #define I2C_SDA_IO			18
 #define I2C_SCL_IO			19
@@ -162,10 +163,10 @@ ledc_timer_config_t ledc_timer;
 ledc_channel_config_t ledc_channel[4];
 int16_t duty[4];
 
-// To remove
+#ifdef TIME_MEASURE
 uint32_t filter_time = 0;
 uint32_t sensor_read_time = 0;
-
+#endif
 //**********************************************************************
 //Auxiliary Functions
 uint32_t getMicros() {
@@ -259,7 +260,6 @@ esp_err_t I2C_Read_Byte(uint8_t deviceAddr, uint8_t regAddr, uint8_t* regData) {
 	if (ret != ESP_OK) {
 		return ret;
 	}
-	//vTaskDelay(1 / portTICK_RATE_MS);	// Check if this is really necessary
 	cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
 	i2c_master_write_byte(cmd, deviceAddr << 1 | READ_BIT, ACK_CHECK_EN);
@@ -271,28 +271,27 @@ esp_err_t I2C_Read_Byte(uint8_t deviceAddr, uint8_t regAddr, uint8_t* regData) {
 }
 
 esp_err_t I2C_Read_N_Bytes(uint8_t deviceAddr, uint8_t regAddr, uint8_t nBytes,
-		uint8_t* buffer) {	// Comment inside
+		uint8_t* buffer) {
 	int ret;
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
 	i2c_master_write_byte(cmd, deviceAddr << 1 | WRITE_BIT, ACK_CHECK_EN);
 	i2c_master_write_byte(cmd, regAddr, ACK_CHECK_EN);
 	i2c_master_stop(cmd);
-	ret = i2c_master_cmd_begin(I2C_NUM, cmd, 1000 / portTICK_RATE_MS);
+	ret = i2c_master_cmd_begin(I2C_NUM, cmd, 100 / portTICK_RATE_MS);
 	i2c_cmd_link_delete(cmd);
 	if (ret != ESP_OK) {
 		return ret;
 	}
-	//vTaskDelay(1 / portTICK_RATE_MS);	// Check if this is really necessary
 	cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
 	i2c_master_write_byte(cmd, deviceAddr << 1 | READ_BIT, ACK_CHECK_EN);
-	for (int i = 0; i < nBytes - 1; i++) {
-		i2c_master_read_byte(cmd, buffer++, ACK_VAL);
+	if (nBytes > 1) {
+		i2c_master_read(cmd, buffer, nBytes - 1, ACK_VAL);
 	}
-	i2c_master_read_byte(cmd, buffer, NACK_VAL);
+	i2c_master_read_byte(cmd, buffer + nBytes - 1, NACK_VAL);
 	i2c_master_stop(cmd);
-	ret = i2c_master_cmd_begin(I2C_NUM, cmd, 1000 / portTICK_RATE_MS);
+	ret = i2c_master_cmd_begin(I2C_NUM, cmd, 100 / portTICK_RATE_MS);
 	i2c_cmd_link_delete(cmd);
 	return ret;
 }
@@ -554,8 +553,11 @@ void MPU9250_Read_All() {
 	 */
 	MPU9250_Read_ATG();
 	MPU9250_Read_Mag(&magData[0]);
+
+#ifdef TIME_MEASURE
 	gettimeofday(&tv, NULL);
 	sensor_read_time += (1000000 * tv.tv_sec + tv.tv_usec) - read_all_start;
+#endif
 
 	for (int i = 0; i < 3; i++) {
 		acceRealData[i] = acceData[i] * aRes;
@@ -579,15 +581,19 @@ void MPU9250_Read_All() {
 	deltat = ((Now - lastTime) / 1000000.0f); // set integration time by time elapsed since last filter update
 	lastTime = Now;
 
+#ifdef TIME_MEASURE
 	gettimeofday(&tv, NULL);
 	read_all_start = 1000000 * tv.tv_sec + tv.tv_usec;
-	//Mahony(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0], &deltat,&eInt[0]);
+#endif
 
-	Madgwick(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0],&deltat, &beta);
+	//Mahony(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0], &deltat, &eInt[0]);
+	Madgwick(&acceRealData[0], &gyroRealData[0], &magRealData[0], &q[0],
+			&deltat, &beta);
 
+#ifdef TIME_MEASURE
 	gettimeofday(&tv, NULL);
-		filter_time += (1000000 * tv.tv_sec + tv.tv_usec) - read_all_start;
-
+	filter_time += (1000000 * tv.tv_sec + tv.tv_usec) - read_all_start;
+#endif
 	//printf("q[0] = %f\nq[1] = %f\nq[2] = %f\nq[3] = %f\n\n", q[0], q[1],q[2], q[3]);
 
 	yaw = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]),
@@ -702,22 +708,29 @@ void app_main() {
 
 	while (1) {
 
+#ifdef TIME_MEASURE
 		uint32_t bundle_start;
 		gettimeofday(&tv, NULL);
 		bundle_start = 1000000 * tv.tv_sec + tv.tv_usec;
-
 		uint32_t loop_start = 0;
 		uint32_t read_all_time = 0;
 		sensor_read_time = 0;
 		filter_time = 0;
+#endif
 
-		for (int tt = 0; tt < 1000; tt++) {
+		//for (int tt = 0; tt < 1000; tt++) {
+
+#ifdef TIME_MEASURE
 			gettimeofday(&tv, NULL);
 			loop_start = 1000000 * tv.tv_sec + tv.tv_usec;
+#endif
 			//Read current position
 			MPU9250_Read_All();
+
+#ifdef TIME_MEASURE
 			gettimeofday(&tv, NULL);
 			read_all_time += (1000000 * tv.tv_sec + tv.tv_usec) - loop_start;
+#endif
 
 			//Calculate the error
 			float eRoll = targetRoll - roll;
@@ -750,7 +763,6 @@ void app_main() {
 			float cPitch = pPitch + iPitch + dPitch;
 
 			//printf("cRoll = %.4f\ncYaw = %.4f\ncPitch = %.4f\n", cRoll, cYaw,cPitch);
-			//printf("IterationTime = %d\n\n", PID_IterationTime);
 
 			//Calculate the control variable
 			duty[0] = BASE_THROTTLE + cRoll + cPitch;
@@ -777,19 +789,19 @@ void app_main() {
 			last_eYaw = eYaw;
 			last_ePitch = ePitch;
 
-			//vTaskDelayUntil(&xLastWakeTime, 1);	//1ms -> 1000/1 = 1000Hz
-		}
+			vTaskDelayUntil(&xLastWakeTime, 1);	//1ms -> 1000/1 = 1000Hz
+		//}
 
+#ifdef TIME_MEASURE
 		uint32_t bundle_end;
 		gettimeofday(&tv, NULL);
 		bundle_end = 1000000 * tv.tv_sec + tv.tv_usec;
-
+		printf("Total time = %.2f ms\n", (bundle_end - bundle_start) / 1000.0);
 		printf("Read_All time = %.2f ms\n", read_all_time / 1000.0);
 		printf("Read sensor time = %.2f ms\n", sensor_read_time / 1000.0);
 		printf("Filter time = %.2f ms\n", filter_time / 1000.0);
-		printf("Total time = %.2f ms\n", (bundle_end - bundle_start) / 1000.0);
-		printf("Loop frequency = %.2f Hz\n\n",
-				1000.0 / ((bundle_end - bundle_start) / 1000000.0));
+		printf("Loop frequency = %.2f Hz\n\n", 1000.0 / ((bundle_end - bundle_start) / 1000000.0));
+#endif
 	}
 
 	//xTaskCreate(MPU9250_Read_All, "MPU9250_Read_All", 1024 * 2, NULL, 5, NULL);
