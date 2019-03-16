@@ -1,4 +1,4 @@
-#include <math.h>
+#include "MadgwickFilter.h"
 
 void Madgwick(float * acceData, float * gyroData, float * magData, float * q, float * deltat, float * beta) {
 	float ax = acceData[0];

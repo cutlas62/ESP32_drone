@@ -56,6 +56,12 @@
 
 Maximum controller frequency = 2820 Hz
 
+## Power Consumption Measurements
+
+Maximum motor current = 850 mA @ 3.7 V
+
 ## TO DO
 * Average target roll and pitch instead of one sample
+* Read VL53LOX
+* Select pressure sensor
 

@@ -1,7 +1,4 @@
-#define MAHONY_KP 		10.0f
-#define MAHONY_KI 		0.0f
-
-#include <math.h>
+#include "MahonyFilter.h"
 
 void Mahony(float * acceData, float * gyroData, float * magData, float * q, float * deltat, float * eInt) {
 	float ax = acceData[0];
